@@ -1,0 +1,891 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Martins Padaria · Pedidos</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<style>
+/* Visual limpo e neutro: foco em leitura rápida durante o atendimento. */
+:root{
+  --bg:#1d0b3d; --surface:#2c1357; --ink:#f4eeff; --muted:#bfaee8; --line:#43267a;
+  --brand:#a78bfa; --brand-ink:#1d0b3d; --brand-soft:#3d2170;
+  --novo:#d8c8ff; --novo-bg:#4a2394;
+  --preparo:#f0d9ff; --preparo-bg:#5b2a8f;
+  --pronto:#c4a8ff; --pronto-bg:#3f1d80;
+  --entregue:#bfaee8; --entregue-bg:#33195f;
+  --danger:#f9a8d4;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  background:var(--bg); color:var(--ink);
+  font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  padding-block:0 110px;
+  padding-inline:max(14px,env(safe-area-inset-left,0px)) max(14px,env(safe-area-inset-right,0px));
+}
+button,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+[hidden]{display:none!important}
+:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+
+.notice{margin:12px 0 0;padding:10px 12px;border-radius:12px;background:var(--brand-soft);color:var(--danger);font-weight:600;font-size:14px}
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:4;background:var(--bg);padding-block:16px 10px}
+.top-row{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.top-right{display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap;justify-content:flex-end}
+h1{font-size:20px;margin:0;font-weight:750;letter-spacing:-.01em}
+.count{font-size:13px;color:var(--muted);white-space:nowrap}
+.switch{color:var(--brand);font-weight:700;font-size:14px;text-decoration:none;white-space:nowrap;padding:7px 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface)}
+.tabs{display:flex;gap:6px;margin-top:12px;overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{flex:0 0 auto;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:8px 14px;font-weight:600;font-size:14px;display:flex;gap:8px;align-items:center}
+.tab .n{background:var(--bg);border-radius:999px;padding:1px 8px;font-size:12px;font-variant-numeric:tabular-nums}
+.tab[aria-selected="true"]{background:var(--brand);color:var(--brand-ink);border-color:var(--brand)}
+.tab[aria-selected="true"] .n{background:rgba(29,11,61,.25)}
+
+.board{display:grid;grid-template-columns:1fr;gap:14px;margin-top:6px}
+@media (min-width:900px){
+  .board{grid-template-columns:repeat(4,minmax(0,1fr));align-items:start}
+  .tabs{display:none}
+  .col[hidden]{display:flex!important}
+}
+.col{display:flex;flex-direction:column;gap:10px;min-width:0}
+.col.hide-mobile{display:none}
+.col.show-mobile{display:flex}
+.col-title{display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:0 2px}
+.empty{background:var(--surface);border:1px dashed var(--line);border-radius:14px;padding:22px;text-align:center;color:var(--muted);font-size:14px}
+
+.order{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;min-width:0;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+.order-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.who{font-weight:700;font-size:16px;overflow-wrap:anywhere}
+.num{font-variant-numeric:tabular-nums;color:var(--muted);font-size:13px;white-space:nowrap}
+.badge{font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap}
+.badge.novo{background:var(--novo-bg);color:var(--novo)}
+.badge.preparo{background:var(--preparo-bg);color:var(--preparo)}
+.badge.pronto{background:var(--pronto-bg);color:var(--pronto)}
+.badge.entregue{background:var(--entregue-bg);color:var(--entregue)}
+.items{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:4px}
+.items li{display:flex;gap:8px}
+.items .q{font-weight:700;min-width:34px;font-variant-numeric:tabular-nums}
+.obs{margin:10px 0 0;background:var(--brand-soft);color:var(--brand);border-radius:10px;padding:8px 10px;font-size:14px;font-weight:600;overflow-wrap:anywhere}
+.obs::before{content:"Obs.: ";font-weight:800}
+.actions{margin-top:12px;display:flex;gap:8px}
+.btn{flex:1;border:0;border-radius:12px;min-height:46px;padding:10px 12px;font-weight:700;font-size:15px}
+.btn.primary{background:var(--brand);color:var(--brand-ink)}
+.btn.pronto-btn{background:var(--brand);color:var(--brand-ink)}
+.btn.preparo-btn{background:var(--pronto);color:var(--brand-ink)}
+.btn.done{background:var(--entregue-bg);color:var(--entregue)}
+.btn:disabled{opacity:.5;cursor:default}
+.delivered-note{font-size:13px;color:var(--muted);margin-top:8px}
+
+.fab{position:fixed;left:0;right:0;bottom:0;padding:12px max(14px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(14px,env(safe-area-inset-left,0px));background:linear-gradient(to top,var(--bg) 70%,transparent);z-index:5}
+.fab button{width:100%;max-width:640px;margin:0 auto;display:block;border:0;background:var(--brand);color:var(--brand-ink);border-radius:14px;min-height:54px;font-weight:750;font-size:17px;box-shadow:0 6px 18px rgba(109,40,217,.28)}
+
+/* Modal de novo pedido */
+.overlay{position:fixed;inset:0;background:rgba(46,16,101,.45);z-index:10;display:flex;align-items:flex-end;justify-content:center}
+@media (min-width:640px){.overlay{align-items:center}}
+.sheet{background:var(--surface);width:100%;max-width:560px;max-height:92vh;overflow-y:auto;border-radius:18px 18px 0 0;padding:18px 16px calc(16px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:14px}
+@media (min-width:640px){.sheet{border-radius:18px}}
+.sheet-head{display:flex;justify-content:space-between;align-items:center}
+.sheet h2{margin:0;font-size:18px}
+.x{border:0;background:var(--bg);width:36px;height:36px;border-radius:50%;font-size:18px;line-height:1}
+label.f{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:700;color:var(--muted)}
+input.txt,textarea{width:100%;border:1px solid var(--line);background:var(--bg);border-radius:12px;padding:12px 14px;font-size:16px;color:var(--ink);min-height:48px}
+textarea{min-height:64px;resize:vertical}
+.idrow{display:flex;justify-content:space-between;align-items:center;background:var(--bg);border-radius:12px;padding:10px 14px}
+.idrow strong{font-variant-numeric:tabular-nums;font-size:18px}
+.menu{display:grid;grid-template-columns:1fr;gap:8px}
+@media (min-width:480px){.menu{grid-template-columns:1fr 1fr}}
+.mi{display:flex;justify-content:space-between;align-items:center;gap:8px;border:1px solid var(--line);border-radius:12px;padding:8px 10px;background:var(--bg);min-width:0}
+.mi .nm{font-weight:600;overflow-wrap:anywhere}
+.stepper{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+.stepper button{width:36px;height:36px;border-radius:10px;border:1px solid var(--line);background:var(--bg);font-size:18px;font-weight:700}
+.stepper button.plus{background:var(--brand);color:var(--brand-ink);border-color:var(--brand)}
+.stepper span{min-width:26px;text-align:center;font-weight:750;font-variant-numeric:tabular-nums}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--bg);border-radius:999px;padding:6px 12px;font-size:13px;font-weight:600}
+.summary{background:var(--bg);border-radius:12px;padding:12px 14px;font-size:14px}
+.summary ul{margin:6px 0 0;padding-left:18px}
+.summary.empty-sum{color:var(--muted)}
+.msg{color:var(--danger);font-size:14px;font-weight:600;min-height:0}
+.msg.okm{color:var(--ink)}
+.sheet-actions{display:flex;gap:8px;position:sticky;bottom:0;background:var(--surface);padding-top:4px}
+.sheet-actions button{flex:1;min-height:50px;border-radius:12px;border:0;font-weight:750;font-size:15px}
+.sheet-actions .cancel{background:var(--bg);color:var(--ink)}
+.sheet-actions .save{background:var(--brand);color:var(--brand-ink)}
+.sheet-actions .save:disabled{opacity:.4}
+
+/* Tela de produtos */
+.addbox{display:flex;gap:8px;margin-top:14px}
+.addbox input{flex:1;min-width:0}
+.addbox .btn{flex:0 0 auto;min-width:112px;min-height:48px}
+.plist{display:flex;flex-direction:column;gap:10px;margin-top:12px}
+.prow{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0;flex-wrap:wrap}
+.prow .pname{font-weight:700;overflow-wrap:anywhere;min-width:0;flex:1 1 160px}
+.prow .pact{display:flex;gap:8px;flex:0 0 auto;flex-wrap:wrap}
+.prow input.txt{flex:1 1 180px;min-width:0;min-height:44px}
+.small-btn{border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:10px;padding:8px 12px;font-weight:700;font-size:14px;min-height:38px}
+.small-btn.on{background:var(--brand);color:var(--brand-ink);border-color:var(--brand)}
+.small-btn.danger{background:var(--danger);color:var(--brand-ink);border-color:var(--danger)}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+/* Tela de entrada */
+#login{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;background:radial-gradient(circle at 30% 10%,#3a1656,#1e0b33 70%);font-family:inherit}
+#login[hidden]{display:none}
+#login .lcard{width:100%;max-width:420px;background:#241040;border:1px solid #3d2663;border-radius:24px;padding:28px 24px}
+#login .lmark{width:56px;height:56px;border-radius:14px;background:#8b5cf6;color:#1e0b33;font-weight:800;font-size:28px;display:flex;align-items:center;justify-content:center}
+#login h1{margin:18px 0 6px;font-size:28px;color:#f3edff}
+#login p{margin:0 0 20px;color:#c3b3e0;font-size:15px}
+#login label{display:block;font-size:14px;font-weight:600;color:#c3b3e0;margin:14px 0 6px}
+#login input{width:100%;box-sizing:border-box;padding:14px;border-radius:14px;border:1px solid #3d2663;background:#170a2b;color:#f3edff;font-size:16px}
+#login input:focus{outline:2px solid #a78bfa;border-color:transparent}
+#login button{width:100%;margin-top:24px;padding:16px;border:0;border-radius:16px;background:#a78bfa;color:#1e0b33;font-weight:700;font-size:17px;cursor:pointer}
+#login .lerr{min-height:20px;margin-top:12px;color:#fca5a5;font-size:14px}
+#login .ldemo{margin-top:18px;padding:14px;border-radius:14px;background:#2d1a4a;color:#c3b3e0;font-size:13px;line-height:1.6}
+/* Preços, totais e exclusão de pedidos entregues */
+.pr{color:var(--muted);font-weight:600;font-size:13px;white-space:nowrap}
+.order-total{margin-top:10px;font-size:15px;font-weight:600;color:var(--muted)}
+.order-total strong{color:var(--brand);font-size:16px}
+.total-big{margin-top:8px;font-size:18px;font-weight:800;color:var(--brand)}
+.delivered-row{display:flex;align-items:center;gap:8px;width:100%}
+.delivered-row .delivered-note{flex:1}
+.trash{flex:0 0 auto;width:46px;min-height:46px;border:1px solid var(--line);background:var(--bg);color:var(--danger);border-radius:12px;display:flex;align-items:center;justify-content:center}
+/* Novo pedido: tela simples para uma mão */
+.mi-info{display:flex;flex-direction:column;min-width:0;flex:1}
+.mi-info .pr{color:var(--muted);font-size:13px;font-weight:600}
+.novo-pedido .menu{grid-template-columns:1fr}
+.novo-pedido .mi{padding:10px 12px}
+.novo-pedido .stepper button{width:44px;height:44px;font-size:20px}
+.novo-pedido .summary ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.novo-pedido .summary li{display:flex;justify-content:space-between;gap:10px}
+.total-row{display:flex;justify-content:space-between;align-items:center;background:var(--bg);border-radius:14px;padding:14px 16px;font-size:16px;font-weight:700}
+.total-row strong{font-size:24px;color:var(--brand)}
+.novo-pedido textarea{min-height:56px}
+.novo-pedido .sheet-actions{padding-bottom:4px}
+.novo-pedido .sheet-actions .cancel{flex:1}
+.novo-pedido .sheet-actions .save{flex:2;min-height:60px;font-size:18px}
+.delivered-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px}
+.delivered-foot .delivered-note{flex:1}
+.numrow{display:flex;align-items:baseline;gap:8px}
+.pnum{font-size:34px;font-weight:800;line-height:1;color:#FFFFFF;font-variant-numeric:tabular-nums}
+.plbl{font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--muted)}
+.head-right{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex:0 0 auto}
+.hora{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* Legibilidade: letras um pouco maiores em todas as telas */
+body{font-size:16px;line-height:1.5}
+h1{font-size:23px}
+.count{font-size:14px}
+.switch{font-size:15px;padding:9px 14px}
+.tabs{gap:8px}
+.tab{font-size:15px;padding:10px 16px;white-space:nowrap}
+.tab .n{font-size:13px}
+.notice{font-size:15px;line-height:1.45}
+.col{gap:12px}
+.col-title{font-size:14px}
+.empty{font-size:16px;padding:24px}
+.order{padding:16px}
+.order-head{gap:12px}
+.who{font-size:19px;line-height:1.25;margin-top:2px}
+.badge{font-size:14px;padding:5px 11px}
+.hora{font-size:14px}
+.plbl{font-size:12px}
+.items{gap:6px;margin-top:12px}
+.items li{font-size:17px;line-height:1.35}
+.items .q{min-width:42px}
+.obs{font-size:16px;padding:10px 12px;margin-top:12px}
+.order-total{font-size:17px;margin-top:12px}
+.order-total strong{font-size:21px}
+.btn{font-size:17px;min-height:52px;padding:12px 14px}
+.delivered-note{font-size:15px}
+.fab button{font-size:19px;min-height:58px}
+.sheet h2{font-size:21px}
+label.f{font-size:15px}
+input.txt,textarea{font-size:18px;min-height:52px}
+textarea{min-height:72px}
+.mi{padding:12px 12px;gap:10px}
+.mi .nm{font-size:18px;line-height:1.3}
+.mi-info .pr{font-size:15px}
+.stepper button{width:42px;height:42px;font-size:21px}
+.stepper span{min-width:32px;font-size:18px}
+.summary{font-size:16px;padding:14px 16px}
+.novo-pedido .summary li{font-size:16px;padding:2px 0}
+.total-row{font-size:18px;padding:16px 18px}
+.total-row strong{font-size:30px}
+.total-big{font-size:21px}
+.msg{font-size:15px}
+.sheet-actions button{font-size:17px;min-height:54px}
+.novo-pedido .sheet-actions .save{min-height:64px;font-size:20px}
+.x{width:42px;height:42px;font-size:20px}
+.prow{padding:14px 16px}
+.prow .pname{font-size:18px;line-height:1.3}
+.pr{font-size:15px}
+.small-btn{font-size:16px;min-height:44px;padding:9px 14px}
+.chip{font-size:15px;padding:8px 14px}
+.trash{width:50px;min-height:50px}
+.idrow{padding:12px 16px}
+@media (min-width:640px){
+  body{font-size:17px}
+  .who{font-size:20px}
+  .items li{font-size:18px}
+  .mi .nm{font-size:19px}
+}
+@media (max-width:359px){
+  body{font-size:15px}
+  .tab{padding:9px 12px;font-size:14px}
+  .who{font-size:17px}
+  .items li{font-size:16px}
+  .btn{font-size:16px}
+  .novo-pedido .sheet-actions .save{font-size:18px}
+}
+</style>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#4a1e63">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Martins Padaria">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<script>
+if ("serviceWorker" in navigator) { navigator.serviceWorker.register("sw.js").catch(function(){}); }
+</script>
+</head>
+<body>
+
+<div id="login">
+  <form class="lcard" id="loginForm" autocomplete="on">
+    <div class="lmark">M</div>
+    <h1>Martins Padaria</h1>
+    <p>Entre para acessar o painel de pedidos.</p>
+    <label for="lEmail">E-mail</label>
+    <input id="lEmail" type="email" placeholder="seu@email.com" autocomplete="username" required>
+    <label for="lPass">Senha</label>
+    <input id="lPass" type="password" placeholder="Sua senha" autocomplete="current-password" required>
+    <button type="submit">Entrar no sistema →</button>
+    <div class="lerr" id="lErr"></div>
+    <div class="ldemo"><b>Acesso de demonstração</b><br>Administrador: admin@martins.com<br>Senha: Martins@2026<br><br>Funcionário: equipe@martins.com<br>Senha: equipe123</div>
+  </form>
+</div>
+
+<div class="notice" id="notice" role="status" hidden></div>
+
+<!-- TELA DO ATENDIMENTO -->
+<div id="atend">
+  <div class="top">
+    <div class="top-row">
+      <h1>Martins <span style="color:var(--brand)">Padaria</span></h1>
+      <div class="top-right">
+        <span class="count" id="count-open">0 em aberto</span>
+        <a class="switch" href="#produtos">Produtos</a>
+        <a class="switch" href="#chapa">Chapa →</a>
+      </div>
+    </div>
+    <div class="tabs" role="tablist" aria-label="Status dos pedidos" id="tabs"></div>
+  </div>
+
+  <main class="board" id="board"></main>
+
+  <div class="fab"><button type="button" id="btn-new">+ Novo pedido</button></div>
+
+  <div class="overlay" id="overlay" hidden>
+    <form class="sheet novo-pedido" id="form" role="dialog" aria-modal="true" aria-labelledby="sheet-title" novalidate>
+      <div class="sheet-head">
+        <h2 id="sheet-title">Novo pedido</h2>
+        <button type="button" class="x" id="btn-close" aria-label="Fechar">×</button>
+      </div>
+
+      <div class="idrow">
+        <div class="numrow"><span class="pnum" id="new-num">01</span><span class="plbl">PEDIDO</span></div>
+      </div>
+
+      <input class="txt" id="cliente" maxlength="40" autocomplete="off" placeholder="Nome do cliente (opcional)" aria-label="Nome do cliente">
+
+      <div class="menu" id="menu"></div>
+
+      <div class="summary empty-sum" id="summary">Nenhum item escolhido.</div>
+
+      <textarea id="obs" maxlength="160" placeholder="Observações ou produto que não está na lista" aria-label="Observações"></textarea>
+
+      <div class="total-row"><span>Total</span><strong id="total-val">R$ 0,00</strong></div>
+
+      <div class="msg" id="msg" role="status"></div>
+
+      <div class="sheet-actions">
+        <button type="button" class="cancel" id="btn-cancel">Cancelar</button>
+        <button type="submit" class="save" id="btn-save" disabled>Enviar pedido</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- TELA DA CHAPA (somente visualizar e mudar status) -->
+<div id="chapaView" hidden>
+  <div class="top">
+    <div class="top-row">
+      <h1>Chapa</h1>
+      <div class="top-right">
+        <span class="count" id="chapa-count">0 na fila</span>
+        <a class="switch" href="#">← Atendimento</a>
+      </div>
+    </div>
+  </div>
+  <main class="board" id="chapa-list" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr))"></main>
+</div>
+
+<!-- TELA DE PRODUTOS (cardápio da padaria) -->
+<div id="prodView" hidden>
+  <div class="top">
+    <div class="top-row">
+      <h1>Produtos</h1>
+      <div class="top-right">
+        <span class="count" id="prod-count">0 produtos</span>
+        <a class="switch" href="#">← Atendimento</a>
+      </div>
+    </div>
+    <form class="addbox" id="form-prod" novalidate>
+      <input class="txt" id="new-prod" maxlength="40" autocomplete="off" placeholder="Nome do novo produto">
+      <input class="txt" id="new-prod-preco" inputmode="decimal" autocomplete="off" placeholder="Preço (ex.: 2,50)" style="flex:0 0 120px;width:120px">
+      <button class="btn primary" type="submit">Adicionar</button>
+    </form>
+    <div class="msg" id="msg-prod" role="status" style="margin-top:8px"></div>
+  </div>
+  <div class="plist" id="prod-list"></div>
+</div>
+
+<script>
+/* Configuração do Firebase (projeto martins-padaria) */
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyA-Xs0gkBUpAdrVMAjjcIiGMGwqzUC8YY0",
+  authDomain: "martins-padaria.firebaseapp.com",
+  projectId: "martins-padaria",
+  storageBucket: "martins-padaria.firebasestorage.app",
+  messagingSenderId: "694311956474",
+  appId: "1:694311956474:web:95d1c20877e7846a26fe43"
+};
+
+/* Adapta o Firestore para a mesma interface usada pelo app */
+function firebaseAdapter(fs){
+  return {
+    collection(name){
+      const c = fs.collection(name);
+      return {
+        doc: id => ({
+          set: d => c.doc(id).set(d),
+          update: d => c.doc(id).update(d),
+          delete: () => c.doc(id).delete()
+        }),
+        /* includeMetadataChanges: avisa quando o servidor confirma a gravação */
+        onSnapshot: (next, err) => c.onSnapshot({includeMetadataChanges: true}, next, err)
+      };
+    }
+  };
+}
+
+const CHIPS = ['Sem açúcar', 'Retirar no balcão', 'Embalar para viagem', 'Aquecer', 'Sem glúten', 'Sem cebola'];
+
+const STATUS = {
+  novo:     {label:'Novo',       next:'Iniciar preparo',      btn:'primary'},
+  preparo:  {label:'Em preparo', next:'Marcar como pronto',   btn:'preparo-btn'},
+  pronto:   {label:'Pronto',     next:'Finalizar e entregar', btn:'pronto-btn'},
+  entregue: {label:'Entregue',   next:null}
+};
+const ORDER_KEYS = ['novo','preparo','pronto','entregue'];
+const numDisp = n => String(Number(n) || 0).padStart(2, '0');
+const brl = v => (Number(v) || 0).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+const totalOf = o => Math.round((o.total != null ? Number(o.total)
+  : o.itens.reduce((s, i) => s + (Number(i.q) || 0) * (Number(i.p) || 0), 0)) * 100) / 100;
+const parsePreco = s => {
+  let t = String(s).trim();
+  if (t === '') return NaN;
+  if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
+  const n = Number(t);
+  return isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : NaN;
+};
+/* Pedido entregue e já pago sai das listas, mas continua salvo no Firestore */
+const isNaLista = (o, k) => o.st === k && !(k === 'entregue' && o.pago === true);
+const TRASH_SVG = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/></svg>';
+const FLOW = ['novo','preparo','pronto','entregue'];
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad = n => String(n).padStart(3, '0');
+const nowHora = () => new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+
+/* ---------- Estado compartilhado (db) ---------- */
+let db = null;            // armazenamento compartilhado entre atendimento, chapa e produtos
+let orders = [];          // pedidos vindos ao vivo do armazenamento
+let products = [];        // cardápio da padaria, vindo ao vivo
+let ready = false;        // pedidos já responderam
+let productsReady = false;// produtos já responderam
+let activeTab = 'novo';
+let editingId = null;     // produto em edição
+let armedId = null;       // produto aguardando confirmação de remoção
+const busy = new Set();   // evita clique duplo no mesmo item
+
+function notice(text){
+  const n = $('#notice');
+  if (!text) { n.hidden = true; n.textContent = ''; return; }
+  n.textContent = text; n.hidden = false;
+}
+
+async function connect(){
+  /* Firestore: dados compartilhados entre os celulares */
+  if (!window.firebase || !firebase.firestore) {
+    notice('Não foi possível conectar. Verifique a internet e recarregue a página.');
+    return;
+  }
+  db = firebaseAdapter(firebase.firestore());
+  db.collection('pedidos').onSnapshot(snap => {
+    /* Só mostra na tela o que o servidor confirmou */
+    if (snap.metadata && snap.metadata.hasPendingWrites) return;
+    orders = snap.docs.filter(d => d.exists).map(d => ({...d.data(), id: d.id}));
+    ready = true;
+    notice('');
+    renderAll();
+  }, err => {
+    ready = true;
+    notice(err && err.code === 'permission-denied'
+      ? 'Sem permissão para ver os pedidos. Confira o login e as regras do Firestore.'
+      : 'Os pedidos não estão atualizando agora. Tente novamente em instantes.');
+    renderAll();
+  });
+  db.collection('produtos').onSnapshot(snap => {
+    if (snap.metadata && snap.metadata.hasPendingWrites) return;
+    products = snap.docs.filter(d => d.exists).map(d => ({...d.data(), id: d.id}))
+      .sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
+    productsReady = true;
+    renderAll();
+    if (!$('#overlay').hidden) { renderMenu(); renderSummary(); }
+  }, err => {
+    productsReady = true;
+    notice('Os produtos não estão atualizando agora. Tente novamente em instantes.');
+    renderAll();
+  });
+  setTimeout(() => {
+    if (!ready) notice('Os pedidos ainda não carregaram. Verifique a conexão.');
+  }, 10000);
+}
+
+/* Grava no Firestore e só retorna true depois da confirmação do servidor */
+async function write(fn){
+  try {
+    await Promise.race([
+      fn(),
+      new Promise((_, rej) => setTimeout(() => rej({code: 'timeout'}), 15000))
+    ]);
+    return true;
+  } catch (e) {
+    const code = e && e.code;
+    notice(code === 'timeout' ? 'Sem confirmação do servidor. Verifique a internet e tente de novo.'
+      : code === 'permission-denied' ? 'Sem permissão para salvar. Confira o login.'
+      : code === 'quota_exceeded' ? 'Limite atingido. Avise o responsável.'
+      : 'Não foi possível salvar. Tente de novo.');
+    return false;
+  }
+}
+
+const colOf = name => db.collection(name);
+const nextNumber = () => orders.reduce((m, o) => Math.max(m, Number(o.num) || 0), 0) + 1;
+
+async function setStatus(id, st, extra){
+  if (!db || busy.has(id)) return;
+  busy.add(id);
+  try { await write(() => colOf('pedidos').doc(id).update({st, ...(extra || {})})); }
+  finally { busy.delete(id); }
+}
+
+/* ---------- Atendimento ---------- */
+function renderTabs(){
+  const counts = {};
+  ORDER_KEYS.forEach(k => counts[k] = orders.filter(o => isNaLista(o, k)).length);
+  const open = counts.novo + counts.preparo + counts.pronto;
+  $('#count-open').textContent = open + ' em aberto';
+  $('#tabs').innerHTML = ORDER_KEYS.map(k => `
+    <button class="tab" role="tab" data-tab="${k}" aria-selected="${k === activeTab}">
+      ${STATUS[k].label}<span class="n">${counts[k]}</span>
+    </button>`).join('');
+}
+
+function orderCard(o){
+  const who = o.cliente ? esc(o.cliente) : `Pedido ${numDisp(o.num)}`;
+  const itens = o.itens.map(i => `<li><span class="q">${i.q}×</span><span>${esc(i.n)}</span></li>`).join('');
+  const st = STATUS[o.st];
+  const action = st.next
+    ? `<button class="btn ${st.btn}" data-advance="${o.id}">${st.next}</button>`
+    : `<div class="delivered-note">Entregue às ${esc(o.hora || '')}</div>`;
+  return `
+    <article class="order" aria-label="${who}">
+      <div class="order-head">
+        <div style="min-width:0">
+          <div class="numrow"><span class="pnum">${numDisp(o.num)}</span><span class="plbl">PEDIDO</span></div>
+          ${o.cliente ? `<div class="who">${esc(o.cliente)}</div>` : ''}
+        </div>
+        <div class="head-right"><span class="badge ${o.st}">${st.label}</span><span class="hora">${esc(o.hora || '')}</span></div>
+      </div>
+      <ul class="items">${itens}</ul>
+      <div class="order-total">Total: <strong>${brl(totalOf(o))}</strong></div>
+      ${o.obs ? `<p class="obs">${esc(o.obs)}</p>` : ''}
+      ${o.st === 'entregue' ? '' : `<div class="actions">${action}</div>`}
+      ${o.st === 'entregue' ? `<div class="actions"><button type="button" class="btn primary" data-pagar="${o.id}">Pagamento confirmado</button></div>
+      <div class="delivered-foot">${action}<button type="button" class="trash" data-del="${o.id}" aria-label="Excluir pedido lançado por engano" title="Excluir pedido lançado por engano">${TRASH_SVG}</button></div>` : ''}
+    </article>`;
+}
+
+function renderBoard(){
+  const board = $('#board');
+  if (!ready) { board.innerHTML = '<div class="empty" style="grid-column:1/-1">Carregando pedidos…</div>'; return; }
+  board.innerHTML = ORDER_KEYS.map(k => {
+    const list = orders.filter(o => isNaLista(o, k)).sort((a, b) => (Number(a.num) || 0) - (Number(b.num) || 0) || String(a.id).localeCompare(String(b.id)));
+    const body = list.length ? list.map(orderCard).join('') : `<div class="empty">Nenhum pedido aqui.</div>`;
+    const mobileShow = k === activeTab ? 'show-mobile' : 'hide-mobile';
+    return `
+      <section class="col ${mobileShow}" data-col="${k}">
+        <div class="col-title"><span>${STATUS[k].label}</span><span>${list.length}</span></div>
+        ${body}
+      </section>`;
+  }).join('');
+}
+
+/* ---------- Chapa: só pedidos a preparar ---------- */
+function chapaCard(o){
+  const who = o.cliente ? esc(o.cliente) : `Pedido ${numDisp(o.num)}`;
+  const itens = o.itens.map(i => `<li><span class="q">${i.q}×</span><span>${esc(i.n)}</span></li>`).join('');
+  const isNovo = o.st === 'novo';
+  const label = isNovo ? 'Iniciar preparo' : 'Marcar como pronto';
+  const cls = isNovo ? 'primary' : 'preparo-btn';
+  return `
+    <article class="order" aria-label="${who}">
+      <div class="order-head">
+        <div style="min-width:0">
+          <div class="numrow"><span class="pnum">${numDisp(o.num)}</span><span class="plbl">PEDIDO</span></div>
+          ${o.cliente ? `<div class="who">${esc(o.cliente)}</div>` : ''}
+        </div>
+        <div class="head-right"><span class="badge ${o.st}">${STATUS[o.st].label}</span><span class="hora">${esc(o.hora || '')}</span></div>
+      </div>
+      <ul class="items">${itens}</ul>
+      <div class="order-total">Total: <strong>${brl(totalOf(o))}</strong></div>
+      ${o.obs ? `<p class="obs">${esc(o.obs)}</p>` : ''}
+      <div class="actions"><button class="btn ${cls}" data-chapa="${o.id}">${label}</button></div>
+    </article>`;
+}
+
+function renderChapa(){
+  const list = orders.filter(o => o.st === 'novo' || o.st === 'preparo')
+                     .sort((a, b) => (Number(a.num) || 0) - (Number(b.num) || 0) || String(a.id).localeCompare(String(b.id)));
+  $('#chapa-count').textContent = list.length + ' na fila';
+  $('#chapa-list').innerHTML = !ready
+    ? '<div class="empty" style="grid-column:1/-1">Carregando pedidos…</div>'
+    : list.length
+      ? list.map(chapaCard).join('')
+      : '<div class="empty" style="grid-column:1/-1">Nenhum pedido para preparar agora.</div>';
+}
+
+/* ---------- Produtos: cadastro do cardápio ---------- */
+function renderProducts(){
+  $('#prod-count').textContent = products.length + (products.length === 1 ? ' produto' : ' produtos');
+  const list = $('#prod-list');
+  if (!productsReady) { list.innerHTML = '<div class="empty">Carregando produtos…</div>'; return; }
+  if (!products.length) { list.innerHTML = '<div class="empty">Nenhum produto cadastrado ainda. Adicione o primeiro acima.</div>'; return; }
+  list.innerHTML = products.map(p => editingId === p.id ? editRow(p) : viewRow(p)).join('');
+}
+
+function viewRow(p){
+  const armed = armedId === p.id;
+  return `
+    <div class="prow">
+      <span class="pname">${esc(p.nome)} <span class="pr">· ${brl(p.preco)}</span></span>
+      <div class="pact">
+        <button class="small-btn" data-edit="${p.id}">Editar</button>
+        <button class="small-btn ${armed ? 'danger' : ''}" data-rm="${p.id}">${armed ? 'Confirmar remoção' : 'Remover'}</button>
+      </div>
+    </div>`;
+}
+
+function editRow(p){
+  return `
+    <div class="prow">
+      <input class="txt" id="edit-name" maxlength="40" value="${esc(p.nome)}" aria-label="Nome do produto">
+      <input class="txt" id="edit-preco" inputmode="decimal" value="${(Number(p.preco) || 0).toFixed(2).replace('.', ',')}" aria-label="Preço" style="flex:0 0 120px;width:120px">
+      <div class="pact">
+        <button class="small-btn on" data-save="${p.id}">Salvar</button>
+        <button class="small-btn" data-cancel="1">Cancelar</button>
+      </div>
+    </div>`;
+}
+
+const nameTaken = (name, exceptId) =>
+  products.some(p => p.id !== exceptId && String(p.nome).toLowerCase() === name.toLowerCase());
+
+function prodMsg(text, ok){
+  const m = $('#msg-prod');
+  m.textContent = text;
+  m.className = 'msg' + (ok ? ' okm' : '');
+}
+
+$('#form-prod').addEventListener('submit', async e => {
+  e.preventDefault();
+  if (!db) { prodMsg('Sem conexão para salvar.', false); return; }
+  const input = $('#new-prod');
+  const nome = input.value.trim();
+  const preco = parsePreco($('#new-prod-preco').value);
+  if (!nome) { prodMsg('Digite o nome do produto.', false); return; }
+  if (isNaN(preco)) { prodMsg('Digite um preço válido, ex.: 2,50.', false); return; }
+  if (nameTaken(nome)) { prodMsg('Já existe um produto com esse nome.', false); return; }
+  const id = 'pr' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const ok = await write(() => colOf('produtos').doc(id).set({nome, preco}));
+  if (ok) { input.value = ''; $('#new-prod-preco').value = ''; prodMsg('Produto adicionado.', true); }
+});
+
+/* Ações da tela de produtos e de status */
+document.addEventListener('click', async e => {
+  const edit = e.target.closest('[data-edit]');
+  if (edit) {
+    editingId = edit.dataset.edit; armedId = null; renderProducts();
+    const inp = $('#edit-name'); if (inp) { inp.focus(); inp.select(); }
+    return;
+  }
+  if (e.target.closest('[data-cancel]')) { editingId = null; renderProducts(); return; }
+
+  const save = e.target.closest('[data-save]');
+  if (save) {
+    const id = save.dataset.save;
+    const nome = $('#edit-name').value.trim();
+    const preco = parsePreco($('#edit-preco').value);
+    if (!nome) { prodMsg('O nome não pode ficar vazio.', false); return; }
+    if (isNaN(preco)) { prodMsg('Digite um preço válido, ex.: 2,50.', false); return; }
+    if (nameTaken(nome, id)) { prodMsg('Já existe um produto com esse nome.', false); return; }
+    if (busy.has(id)) return;
+    busy.add(id);
+    try {
+      const ok = await write(() => colOf('produtos').doc(id).update({nome, preco}));
+      if (ok) { editingId = null; prodMsg('Nome atualizado.', true); }
+    } finally { busy.delete(id); }
+    renderProducts();
+    return;
+  }
+
+  const rm = e.target.closest('[data-rm]');
+  if (rm) {
+    const id = rm.dataset.rm;
+    if (busy.has(id)) return;
+    if (armedId !== id) {
+      armedId = id; renderProducts();
+      setTimeout(() => { if (armedId === id) { armedId = null; renderProducts(); } }, 4000);
+      return;
+    }
+    busy.add(id);
+    try {
+      const ok = await write(() => colOf('produtos').doc(id).delete());
+      if (ok) prodMsg('Produto removido.', true);
+    } finally { busy.delete(id); armedId = null; }
+    renderProducts();
+    return;
+  }
+
+  const pg = e.target.closest('[data-pagar]');
+  if (pg) {
+    const id = pg.dataset.pagar;
+    const o = orders.find(x => x.id === id);
+    if (!o || o.st !== 'entregue' || busy.has(id)) return;
+    busy.add(id);
+    try { await write(() => colOf('pedidos').doc(id).update({pago: true, pagoEm: nowHora()})); }
+    finally { busy.delete(id); }
+    return;
+  }
+
+  const del = e.target.closest('[data-del]');
+  if (del) {
+    const id = del.dataset.del;
+    const o = orders.find(x => x.id === id);
+    if (!o || o.st !== 'entregue' || busy.has(id)) return;
+    if (!confirm('Excluir este pedido? Use só para pedido lançado por engano. Não dá para desfazer.')) return;
+    busy.add(id);
+    try { await write(() => colOf('pedidos').doc(id).delete()); }
+    finally { busy.delete(id); }
+    return;
+  }
+
+  const a = e.target.closest('[data-advance]');
+  if (a) {
+    const o = orders.find(x => x.id === a.dataset.advance);
+    if (!o) return;
+    const idx = FLOW.indexOf(o.st);
+    if (idx < 0 || idx >= FLOW.length - 1) return;
+    const next = FLOW[idx + 1];
+    setStatus(o.id, next, next === 'entregue' ? {hora: nowHora()} : {});
+    return;
+  }
+  const c = e.target.closest('[data-chapa]');
+  if (c) {
+    const o = orders.find(x => x.id === c.dataset.chapa);
+    if (!o) return;
+    if (o.st === 'novo') setStatus(o.id, 'preparo');
+    else if (o.st === 'preparo') setStatus(o.id, 'pronto');
+    return;
+  }
+  const t = e.target.closest('[data-tab]');
+  if (t) { activeTab = t.dataset.tab; renderAll(); }
+});
+
+/* ---------- Novo pedido (tela simples, uma mão) ---------- */
+let draft = {};     // quantidade de cada produto neste pedido
+let sending = false;// impede envio duplo
+
+function resetDraft(){ draft = {}; }
+
+function openSheet(){
+  resetDraft();
+  $('#cliente').value = '';
+  $('#obs').value = '';
+  $('#new-num').textContent = numDisp(nextNumber());
+  $('#msg').textContent = '';
+  renderMenu(); renderSummary();
+  $('#overlay').hidden = false;
+}
+function closeSheet(){ $('#overlay').hidden = true; }
+
+function renderMenu(){
+  const box = $('#menu');
+  if (!productsReady) { box.innerHTML = '<div class="empty">Carregando produtos…</div>'; return; }
+  if (!products.length) { box.innerHTML = '<div class="empty">Nenhum produto cadastrado. Cadastre na tela Produtos.</div>'; return; }
+  box.innerHTML = products.map(p => {
+    const q = draft[p.id] || 0;
+    return `
+    <div class="mi">
+      <div class="mi-info">
+        <span class="nm">${esc(p.nome)}</span>
+        <span class="pr">${brl(p.preco)}</span>
+      </div>
+      <div class="stepper">
+        <button type="button" data-minus="${p.id}" aria-label="Diminuir ${esc(p.nome)}">−</button>
+        <span aria-live="polite">${q}</span>
+        <button type="button" class="plus" data-plus="${p.id}" aria-label="Aumentar ${esc(p.nome)}">+</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderSummary(){
+  const sel = products.filter(p => (draft[p.id] || 0) > 0);
+  const total = Math.round(sel.reduce((s, p) => s + draft[p.id] * (Number(p.preco) || 0), 0) * 100) / 100;
+  const box = $('#summary');
+  box.classList.toggle('empty-sum', sel.length === 0);
+  box.innerHTML = sel.length
+    ? `<ul>${sel.map(p => `<li><span>${draft[p.id]}× ${esc(p.nome)}</span><span>${brl(draft[p.id] * (Number(p.preco) || 0))}</span></li>`).join('')}</ul>`
+    : 'Nenhum item escolhido.';
+  $('#total-val').textContent = brl(total);
+  $('#btn-save').disabled = sel.length === 0 || !db || sending;
+}
+
+$('#menu').addEventListener('click', e => {
+  const p = e.target.closest('[data-plus]');
+  const m = e.target.closest('[data-minus]');
+  if (p) draft[p.dataset.plus] = Math.min(99, (draft[p.dataset.plus] || 0) + 1);
+  if (m) draft[m.dataset.minus] = Math.max(0, (draft[m.dataset.minus] || 0) - 1);
+  if (p || m) { renderMenu(); renderSummary(); }
+});
+
+$('#btn-new').addEventListener('click', openSheet);
+$('#btn-close').addEventListener('click', closeSheet);
+$('#btn-cancel').addEventListener('click', closeSheet);
+$('#overlay').addEventListener('click', e => { if (e.target.id === 'overlay') closeSheet(); });
+
+$('#form').addEventListener('submit', async e => {
+  e.preventDefault();
+  if (sending) return;
+  const msgEl = $('#msg');
+  const itens = products.filter(p => (draft[p.id] || 0) > 0)
+    .map(p => ({n: p.nome, q: draft[p.id], p: Number(p.preco) || 0}));
+  if (!itens.length) { msgEl.textContent = 'Escolha pelo menos um produto.'; return; }
+  if (!db) { msgEl.textContent = 'Sem conexão para enviar o pedido.'; return; }
+  const total = Math.round(itens.reduce((s, i) => s + i.q * i.p, 0) * 100) / 100;
+  const num = nextNumber();
+  const id = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  const body = {
+    num,
+    cliente: $('#cliente').value.trim(),
+    itens,
+    total,
+    obs: $('#obs').value.trim(),
+    st: 'novo',
+    hora: nowHora()
+  };
+  sending = true;
+  msgEl.textContent = '';
+  $('#btn-save').textContent = 'Enviando…';
+  renderSummary();
+  const ok = await write(() => colOf('pedidos').doc(id).set(body));
+  sending = false;
+  $('#btn-save').textContent = 'Enviar pedido';
+  if (ok) {
+    activeTab = 'novo';
+    closeSheet();
+    renderAll();
+  } else {
+    msgEl.textContent = $('#notice').textContent || 'Não foi possível enviar o pedido. Tente de novo.';
+    renderSummary();
+  }
+});
+
+/* ---------- Navegação entre telas ---------- */
+function renderAll(){
+  renderTabs(); renderBoard(); renderChapa(); renderProducts();
+}
+
+function applyView(){
+  const h = location.hash;
+  const chapa = h === '#chapa';
+  const prod = h === '#produtos';
+  $('#atend').hidden = chapa || prod;
+  $('#chapaView').hidden = !chapa;
+  $('#prodView').hidden = !prod;
+  if (prod) editingId = null;
+  renderAll();
+}
+
+window.addEventListener('hashchange', applyView);
+applyView();
+</script>
+<script>
+/* Entrada com Firebase Authentication: só libera o sistema depois do login */
+(function(){
+  var box = document.getElementById("login");
+  var form = document.getElementById("loginForm");
+  var err = document.getElementById("lErr");
+  var started = false;
+  if (!window.firebase || !firebase.auth) {
+    err.textContent = "Não foi possível carregar o login. Verifique a internet.";
+    return;
+  }
+  if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+  var auth = firebase.auth();
+  auth.onAuthStateChanged(function(user){
+    if (user) {
+      box.hidden = true;
+      if (!started) { started = true; connect(); }
+    } else {
+      box.hidden = false;
+    }
+  });
+  function msgErro(code){
+    if (code === "auth/too-many-requests") return "Muitas tentativas. Espere um pouco e tente de novo.";
+    if (code === "auth/network-request-failed") return "Sem internet. Verifique a conexão.";
+    if (code === "auth/invalid-email" || code === "auth/user-not-found" ||
+        code === "auth/wrong-password" || code === "auth/invalid-credential") return "E-mail ou senha incorretos.";
+    return "Não foi possível entrar. Tente de novo.";
+  }
+  form.addEventListener("submit", function(ev){
+    ev.preventDefault();
+    var email = document.getElementById("lEmail").value.trim();
+    var senha = document.getElementById("lPass").value;
+    err.textContent = "Entrando...";
+    auth.signInWithEmailAndPassword(email, senha)
+      .then(function(){ err.textContent = ""; })
+      .catch(function(e){ err.textContent = msgErro(e && e.code); });
+  });
+})();
+</script>
+</body>
+</html>
