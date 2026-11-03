@@ -419,7 +419,7 @@ let orders = [];          // pedidos vindos ao vivo do armazenamento
 let products = [];        // cardápio da padaria, vindo ao vivo
 let ready = false;        // pedidos já responderam
 let productsReady = false;// produtos já responderam
-let activeTab = 'novo';
+let activeTab = 'novo'; let knownOrderIds = new Set(); let hasLoadedOrders = false;
 let editingId = null;     // produto em edição
 let armedId = null;       // produto aguardando confirmação de remoção
 const busy = new Set();   // evita clique duplo no mesmo item
@@ -440,7 +440,7 @@ async function connect(){
   db.collection('pedidos').onSnapshot(snap => {
     /* Só mostra na tela o que o servidor confirmou */
     if (snap.metadata && snap.metadata.hasPendingWrites) return;
-    orders = snap.docs.filter(d => d.exists).map(d => ({...d.data(), id: d.id}));
+    const nextOrders = snap.docs.filter(d => d.exists).map(d => ({...d.data(), id: d.id})); const newOrderArrived = hasLoadedOrders && location.hash === '#chapa' && nextOrders.some(o => o.st === 'novo' && !knownOrderIds.has(o.id)); orders = nextOrders; knownOrderIds = new Set(orders.map(o => o.id)); hasLoadedOrders = true; if (newOrderArrived && 'vibrate' in navigator) navigator.vibrate([250, 100, 250]);
     ready = true;
     notice('');
     renderAll();
