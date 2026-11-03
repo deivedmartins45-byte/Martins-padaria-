@@ -487,7 +487,7 @@ async function write(fn){
 }
 
 const colOf = name => db.collection(name);
-const todayKey = () => new Date().toLocaleDateString('en-CA'); const nextNumber = () => { const k = 'pedido-' + todayKey(); const n = Number(localStorage.getItem(k) || 0) + 1; localStorage.setItem(k, n); return n; };
+const todayKey = () => new Date().toLocaleDateString('en-CA'); const nextNumber = () => { const k = 'pedido-real-' + todayKey(); const n = Number(localStorage.getItem(k) || 0) + 1; localStorage.setItem(k, n); return n; };
 
 async function setStatus(id, st, extra){
   if (!db || busy.has(id)) return;
@@ -739,7 +739,7 @@ function openSheet(){
   resetDraft();
   $('#cliente').value = '';
   $('#obs').value = '';
-  $('#new-num').textContent = numDisp(nextNumber());
+  $('#new-num').textContent = numDisp(Number(localStorage.getItem('pedido-real-' + todayKey()) || 0) + 1);
   $('#msg').textContent = '';
   renderMenu(); renderSummary();
   $('#overlay').hidden = false;
